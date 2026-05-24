@@ -10,7 +10,7 @@
     font-family: 'Segoe UI', sans-serif;
     background: #f0f2f5;
     min-height: 100vh;
-    overflow-x: hidden;
+    overflow: hidden; /* el scroll lo gestiona #viewport */
   }
 
   #header {
@@ -18,7 +18,7 @@
     padding: 10px 14px;
     display: flex; align-items: center; justify-content: space-between;
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    position: sticky; top: 0; z-index: 10;
+    position: relative; z-index: 20;
   }
   #header h1 { font-size: 14px; font-weight: 600; }
   #header span { font-size: 11px; opacity: 0.6; margin-left: 8px; }
@@ -28,7 +28,7 @@
     padding: 8px 10px;
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    position: sticky; top: 44px; z-index: 10;
+    position: relative; z-index: 20;
   }
   .tool-group { display: flex; align-items: center; gap: 6px; }
   .divider { width: 1px; height: 26px; background: #ddd; }
@@ -38,9 +38,13 @@
     padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd;
     background: #fff; color: #333; cursor: pointer; font-size: 13px;
     min-height: 40px; -webkit-tap-highlight-color: transparent;
+    user-select: none;
   }
   .toolbar-btn.primary { background: #185FA5; color: #fff; border-color: #185FA5; }
   .toolbar-btn.danger  { background: #fff0f0; color: #c0392b; border-color: #f0c0c0; }
+  .toolbar-btn.active-mode {
+    background: #e8f4e8; color: #2e7d32; border-color: #81c784;
+  }
 
   .color-swatch {
     width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
@@ -53,36 +57,57 @@
   input[type=range] { width: 70px; accent-color: #185FA5; }
   #stroke-val { font-size: 12px; color: #555; min-width: 18px; }
 
-  #main {
-    display: flex; justify-content: center;
-    padding: 16px 0 40px 0;
-    overflow-x: auto;
+  /* Contenedor que ocupa el resto de la pantalla y hace scroll */
+  #viewport {
+    position: relative;
+    overflow: scroll;
     -webkit-overflow-scrolling: touch;
+    width: 100vw;
+    /* altura = pantalla menos header y toolbar */
+    height: calc(100vh - 44px - 56px);
+    background: #e8e8e8;
   }
 
-  /* El wrapper ocupa el ancho CSS real de la imagen */
+  /* Zona interior que se escala con el zoom */
+  #scene {
+    position: relative;
+    display: inline-block;
+    transform-origin: 0 0;
+    /* transform se aplica por JS */
+    padding: 16px;
+  }
+
   .canvas-wrap {
     position: relative;
     display: inline-block;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.2);
     border-radius: 4px;
-    flex-shrink: 0;
   }
-  /* Los canvas tienen el tamaño CSS (visual), pero internamente son 2x o 3x */
-  #page-canvas,
-  #sig-canvas {
-    display: block;
-    border-radius: 4px;
-    /* width/height CSS se fijan por JS */
-  }
-  #sig-canvas {
+  #page-canvas { display: block; border-radius: 4px; }
+  #sig-canvas  {
     position: absolute; top: 0; left: 0;
-    touch-action: none; cursor: crosshair;
+    border-radius: 4px;
+    touch-action: none;
   }
 
+  /* Cursor según modo */
+  body.mode-draw  #sig-canvas { cursor: crosshair; }
+  body.mode-zoom  #sig-canvas { cursor: grab; }
+
   #hint {
-    text-align: center; font-size: 12px; color: #999;
-    padding: 6px 10px;
+    text-align: center; font-size: 12px; color: #777;
+    padding: 6px 10px; background: #f0f2f5;
+  }
+
+  /* Pill indicador de modo */
+  #mode-pill {
+    position: fixed;
+    bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.65); color: #fff;
+    padding: 6px 16px; border-radius: 20px;
+    font-size: 13px; pointer-events: none;
+    z-index: 50; transition: opacity 0.3s;
+    white-space: nowrap;
   }
 
   /* Modal */
@@ -98,10 +123,7 @@
     box-shadow: 0 8px 32px rgba(0,0,0,0.3);
   }
   #modal-box p { font-size: 13px; color: #444; margin-bottom: 10px; }
-  #modal-img {
-    max-width: 100%; border-radius: 6px;
-    border: 1px solid #ddd; margin-bottom: 14px; display: none;
-  }
+  #modal-img { max-width: 100%; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 14px; display: none; }
   #modal-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   .modal-btn {
     padding: 10px 18px; border-radius: 8px; border: none;
@@ -112,7 +134,7 @@
   .modal-btn.cls { background: #eee; color: #333; }
 </style>
 </head>
-<body>
+<body class="mode-draw">
 
 <div id="header">
   <h1>📄 Contrato Compraventa Vehículo</h1>
@@ -120,6 +142,8 @@
 </div>
 
 <div id="toolbar">
+  <button class="toolbar-btn" id="btn-mode" onclick="toggleMode()">🔍 Modo zoom</button>
+  <div class="divider"></div>
   <div class="tool-group">
     <span class="lbl">Color:</span>
     <div class="color-swatch active" style="background:#1a1a1a" data-color="#1a1a1a" onclick="setColor(this)"></div>
@@ -137,15 +161,17 @@
   <button class="toolbar-btn primary" onclick="guardarFirmado()">⬇ Guardar</button>
 </div>
 
-<div id="main">
-  <div>
-    <div class="canvas-wrap" id="canvas-wrap">
+<div id="viewport">
+  <div id="scene">
+    <div class="canvas-wrap">
       <canvas id="page-canvas"></canvas>
       <canvas id="sig-canvas"></canvas>
     </div>
-    <div id="hint">✏️ Dibuja tu firma directamente sobre el documento</div>
+    <div id="hint">✏️ Modo firma activo — pulsa 🔍 para hacer zoom</div>
   </div>
 </div>
+
+<div id="mode-pill">✏️ Modo firma</div>
 
 <div id="modal-overlay">
   <div id="modal-box">
@@ -165,17 +191,201 @@ const pageCanvas = document.getElementById('page-canvas');
 const pageCtx    = pageCanvas.getContext('2d');
 const sigCanvas  = document.getElementById('sig-canvas');
 const sigCtx     = sigCanvas.getContext('2d');
+const viewport   = document.getElementById('viewport');
+const scene      = document.getElementById('scene');
+const pill       = document.getElementById('mode-pill');
+const btnMode    = document.getElementById('btn-mode');
+const hint       = document.getElementById('hint');
 
 let drawing     = false;
 let strokeColor = '#1a1a1a';
 let strokeWidth = 2;
 let finalDataURL = '';
+let mode = 'draw'; // 'draw' | 'zoom'
+
+// Zoom state
+let zoomLevel  = 1;
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+let lastDist   = null;   // distancia entre dos dedos (pinch)
+let panStart   = null;   // pan con un dedo en modo zoom
 
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const DPR   = window.devicePixelRatio || 1;
 
-// devicePixelRatio: 1 en desktop, 2 en Retina/iOS, 3 en Android flagship
-const DPR = window.devicePixelRatio || 1;
+// ── Modo ─────────────────────────────────────────────────────────
+function toggleMode() {
+  mode = mode === 'draw' ? 'zoom' : 'draw';
+  document.body.className = 'mode-' + mode;
+  if (mode === 'zoom') {
+    btnMode.textContent = '✏️ Modo firma';
+    btnMode.classList.add('active-mode');
+    pill.textContent = '🔍 Modo zoom — pellizca o arrastra';
+    hint.textContent = '🔍 Modo zoom — pellizca para hacer zoom, arrastra para mover';
+  } else {
+    btnMode.textContent = '🔍 Modo zoom';
+    btnMode.classList.remove('active-mode');
+    pill.textContent = '✏️ Modo firma';
+    hint.textContent = '✏️ Modo firma activo — pulsa 🔍 para hacer zoom';
+  }
+  showPill();
+}
 
+let pillTimer;
+function showPill() {
+  pill.style.opacity = '1';
+  clearTimeout(pillTimer);
+  pillTimer = setTimeout(() => pill.style.opacity = '0', 1800);
+}
+
+// ── Zoom helpers ─────────────────────────────────────────────────
+function applyZoom() {
+  scene.style.transform = 'scale(' + zoomLevel + ')';
+}
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function dist(t1, t2) {
+  const dx = t1.clientX - t2.clientX;
+  const dy = t1.clientY - t2.clientY;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+// ── Cargar imagen ────────────────────────────────────────────────
+const img = new Image();
+img.onload = function() {
+  const imgW = img.naturalWidth;
+  const imgH = img.naturalHeight;
+
+  const availW = window.innerWidth;
+  const cssW   = Math.min(imgW, availW);
+  const cssH   = Math.round(imgH * (cssW / imgW));
+
+  const bufW = Math.round(cssW * DPR);
+  const bufH = Math.round(cssH * DPR);
+
+  pageCanvas.width  = bufW;
+  pageCanvas.height = bufH;
+  sigCanvas.width   = bufW;
+  sigCanvas.height  = bufH;
+
+  pageCanvas.style.width  = cssW + 'px';
+  pageCanvas.style.height = cssH + 'px';
+  sigCanvas.style.width   = cssW + 'px';
+  sigCanvas.style.height  = cssH + 'px';
+
+  pageCtx.scale(DPR, DPR);
+  sigCtx.scale(DPR, DPR);
+
+  pageCtx.drawImage(img, 0, 0, cssW, cssH);
+};
+img.src = 'data:image/png;base64,' + IMG_BASE64;
+
+// ── Posición de dibujo ───────────────────────────────────────────
+function getDrawPos(e) {
+  const rect = sigCanvas.getBoundingClientRect();
+  const src  = e.touches ? e.touches[0] : e;
+  // bounding rect ya tiene en cuenta el zoom (transform en #scene)
+  return {
+    x: (src.clientX - rect.left) / zoomLevel,
+    y: (src.clientY - rect.top)  / zoomLevel
+  };
+}
+
+// ── Touch unificado en sig-canvas ─────────────────────────────────
+sigCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+
+  if (mode === 'zoom') {
+    if (e.touches.length === 2) {
+      // inicio pinch
+      lastDist = dist(e.touches[0], e.touches[1]);
+      panStart = null;
+    } else if (e.touches.length === 1) {
+      // inicio pan
+      panStart = { x: e.touches[0].clientX, y: e.touches[0].clientY,
+                   sx: viewport.scrollLeft,  sy: viewport.scrollTop };
+      lastDist = null;
+    }
+    return;
+  }
+
+  // Modo draw
+  drawing = true;
+  const p = getDrawPos(e);
+  sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y);
+}, { passive: false });
+
+sigCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+
+  if (mode === 'zoom') {
+    if (e.touches.length === 2 && lastDist !== null) {
+      // Pinch zoom
+      const newDist = dist(e.touches[0], e.touches[1]);
+      const factor  = newDist / lastDist;
+      zoomLevel     = clamp(zoomLevel * factor, ZOOM_MIN, ZOOM_MAX);
+      lastDist      = newDist;
+      applyZoom();
+    } else if (e.touches.length === 1 && panStart) {
+      // Pan (scroll)
+      const dx = panStart.x - e.touches[0].clientX;
+      const dy = panStart.y - e.touches[0].clientY;
+      viewport.scrollLeft = panStart.sx + dx;
+      viewport.scrollTop  = panStart.sy + dy;
+    }
+    return;
+  }
+
+  // Modo draw
+  if (!drawing) return;
+  const p = getDrawPos(e);
+  sigCtx.strokeStyle = strokeColor;
+  sigCtx.lineWidth   = strokeWidth;
+  sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round';
+  sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
+}, { passive: false });
+
+sigCanvas.addEventListener('touchend', e => {
+  drawing  = false;
+  lastDist = null;
+  panStart = null;
+}, { passive: false });
+
+sigCanvas.addEventListener('touchcancel', () => {
+  drawing  = false;
+  lastDist = null;
+  panStart = null;
+});
+
+// ── Mouse (desktop) ──────────────────────────────────────────────
+sigCanvas.addEventListener('mousedown', e => {
+  if (mode !== 'draw') return;
+  drawing = true;
+  const p = getDrawPos(e);
+  sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y);
+});
+sigCanvas.addEventListener('mousemove', e => {
+  if (!drawing || mode !== 'draw') return;
+  const p = getDrawPos(e);
+  sigCtx.strokeStyle = strokeColor;
+  sigCtx.lineWidth   = strokeWidth;
+  sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round';
+  sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
+});
+sigCanvas.addEventListener('mouseup',    () => drawing = false);
+sigCanvas.addEventListener('mouseleave', () => drawing = false);
+
+// ── Rueda ratón para zoom en desktop ─────────────────────────────
+viewport.addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  zoomLevel = clamp(zoomLevel * factor, ZOOM_MIN, ZOOM_MAX);
+  applyZoom();
+}, { passive: false });
+
+// ── Controles ────────────────────────────────────────────────────
 document.getElementById('stroke-size').addEventListener('input', function() {
   strokeWidth = parseFloat(this.value);
   document.getElementById('stroke-val').textContent = this.value;
@@ -191,96 +401,10 @@ function clearSig() {
   sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
 }
 
-// ── Cargar imagen con calidad real ──────────────────────────────
-const img = new Image();
-img.onload = function() {
-  const imgW = img.naturalWidth;   // 993
-  const imgH = img.naturalHeight;  // 1403
-
-  // Ancho CSS disponible (pantalla sin scroll horizontal)
-  const availW = window.innerWidth;
-
-  // Ancho CSS al que se mostrará el canvas (puede ser menor que imgW en móvil)
-  const cssW = Math.min(imgW, availW);
-  const cssH = Math.round(imgH * (cssW / imgW));
-
-  // Tamaño INTERNO del canvas = CSS × DPR  →  nitidez total
-  const bufW = Math.round(cssW * DPR);
-  const bufH = Math.round(cssH * DPR);
-
-  // Aplicar tamaño interno
-  pageCanvas.width  = bufW;
-  pageCanvas.height = bufH;
-  sigCanvas.width   = bufW;
-  sigCanvas.height  = bufH;
-
-  // Aplicar tamaño CSS visual
-  pageCanvas.style.width  = cssW + 'px';
-  pageCanvas.style.height = cssH + 'px';
-  sigCanvas.style.width   = cssW + 'px';
-  sigCanvas.style.height  = cssH + 'px';
-
-  // Escalar el contexto para que 1 unidad CSS = DPR píxeles reales
-  pageCtx.scale(DPR, DPR);
-  sigCtx.scale(DPR, DPR);
-
-  // Dibujar la imagen a tamaño CSS (el scale hace el resto)
-  pageCtx.drawImage(img, 0, 0, cssW, cssH);
-};
-img.src = 'data:image/png;base64,' + IMG_BASE64;
-
-// ── Posición ────────────────────────────────────────────────────
-function getPos(e) {
-  const rect = sigCanvas.getBoundingClientRect();
-  // getBoundingClientRect da coordenadas CSS; el canvas internamente ya tiene scale
-  const src  = e.touches ? e.touches[0] : e;
-  return {
-    x: src.clientX - rect.left,
-    y: src.clientY - rect.top
-  };
-}
-
-// ── Mouse ───────────────────────────────────────────────────────
-sigCanvas.addEventListener('mousedown', e => {
-  drawing = true;
-  const p = getPos(e);
-  sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y);
-});
-sigCanvas.addEventListener('mousemove', e => {
-  if (!drawing) return;
-  const p = getPos(e);
-  sigCtx.strokeStyle = strokeColor;
-  sigCtx.lineWidth   = strokeWidth;
-  sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round';
-  sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
-});
-sigCanvas.addEventListener('mouseup',    () => drawing = false);
-sigCanvas.addEventListener('mouseleave', () => drawing = false);
-
-// ── Touch ───────────────────────────────────────────────────────
-sigCanvas.addEventListener('touchstart', e => {
-  e.preventDefault(); drawing = true;
-  const p = getPos(e);
-  sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y);
-}, { passive: false });
-
-sigCanvas.addEventListener('touchmove', e => {
-  e.preventDefault(); if (!drawing) return;
-  const p = getPos(e);
-  sigCtx.strokeStyle = strokeColor;
-  sigCtx.lineWidth   = strokeWidth;
-  sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round';
-  sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
-}, { passive: false });
-
-sigCanvas.addEventListener('touchend',    () => drawing = false);
-sigCanvas.addEventListener('touchcancel', () => drawing = false);
-
-// ── Guardar ─────────────────────────────────────────────────────
+// ── Guardar ──────────────────────────────────────────────────────
 function guardarFirmado() {
-  // Canvas final a resolución completa (DPR aplicado)
   const fc  = document.createElement('canvas');
-  fc.width  = pageCanvas.width;   // ya incluye DPR
+  fc.width  = pageCanvas.width;
   fc.height = pageCanvas.height;
   const ctx = fc.getContext('2d');
   ctx.drawImage(pageCanvas, 0, 0);
@@ -315,6 +439,9 @@ function descargarDesdeModal() {
 function cerrarModal() {
   document.getElementById('modal-overlay').classList.remove('show');
 }
+
+// Mostrar pill al inicio
+showPill();
 </script>
 </body>
 </html>

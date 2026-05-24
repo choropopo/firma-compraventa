@@ -6,23 +6,29 @@
 <title>Firmador de Contrato</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; min-height: 100vh; overflow-x: hidden; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #f0f2f5;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
 
   #header {
     background: #1a1a2e; color: #fff;
     padding: 10px 14px;
     display: flex; align-items: center; justify-content: space-between;
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    position: sticky; top: 0; z-index: 10;
   }
   #header h1 { font-size: 14px; font-weight: 600; }
-  #header span { font-size: 11px; opacity: 0.6; white-space: nowrap; margin-left: 8px; }
+  #header span { font-size: 11px; opacity: 0.6; margin-left: 8px; }
 
   #toolbar {
     background: #fff; border-bottom: 1px solid #e0e0e0;
     padding: 8px 10px;
-    display: flex; align-items: center; gap: 8px;
-    flex-wrap: wrap;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    position: sticky; top: 44px; z-index: 10;
   }
   .tool-group { display: flex; align-items: center; gap: 6px; }
   .divider { width: 1px; height: 26px; background: #ddd; }
@@ -31,16 +37,14 @@
     display: flex; align-items: center; gap: 5px;
     padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd;
     background: #fff; color: #333; cursor: pointer; font-size: 13px;
-    -webkit-tap-highlight-color: transparent;
-    min-height: 40px;
+    min-height: 40px; -webkit-tap-highlight-color: transparent;
   }
   .toolbar-btn.primary { background: #185FA5; color: #fff; border-color: #185FA5; }
   .toolbar-btn.danger  { background: #fff0f0; color: #c0392b; border-color: #f0c0c0; }
 
   .color-swatch {
     width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
-    border: 2.5px solid transparent;
-    flex-shrink: 0;
+    border: 2.5px solid transparent; flex-shrink: 0;
     -webkit-tap-highlight-color: transparent;
   }
   .color-swatch.active { border-color: #333; }
@@ -51,45 +55,53 @@
 
   #main {
     display: flex; justify-content: center;
-    padding: 16px 0 30px 0;
+    padding: 16px 0 40px 0;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
+
+  /* El wrapper ocupa el ancho CSS real de la imagen */
   .canvas-wrap {
-    position: relative; display: inline-block;
+    position: relative;
+    display: inline-block;
     box-shadow: 0 4px 24px rgba(0,0,0,0.15);
     border-radius: 4px;
-    /* Permite que el canvas se vea completo haciendo scroll */
     flex-shrink: 0;
   }
-  #page-canvas { display: block; border-radius: 4px; max-width: none; }
-  #sig-canvas  {
-    position: absolute; top: 0; left: 0;
+  /* Los canvas tienen el tamaño CSS (visual), pero internamente son 2x o 3x */
+  #page-canvas,
+  #sig-canvas {
+    display: block;
     border-radius: 4px;
-    touch-action: none;
-    cursor: crosshair;
+    /* width/height CSS se fijan por JS */
+  }
+  #sig-canvas {
+    position: absolute; top: 0; left: 0;
+    touch-action: none; cursor: crosshair;
   }
 
   #hint {
     text-align: center; font-size: 12px; color: #999;
-    padding: 6px 10px; letter-spacing: 0.2px;
+    padding: 6px 10px;
   }
 
-  /* Modal guardar */
+  /* Modal */
   #modal-overlay {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.7); z-index: 999;
-    align-items: center; justify-content: center;
-    padding: 20px;
+    background: rgba(0,0,0,0.75); z-index: 999;
+    align-items: center; justify-content: center; padding: 16px;
   }
   #modal-overlay.show { display: flex; }
   #modal-box {
-    background: #fff; border-radius: 14px; padding: 20px;
-    text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    max-width: 95vw; width: 100%;
+    background: #fff; border-radius: 14px; padding: 18px;
+    text-align: center; max-width: 95vw; width: 100%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
   }
-  #modal-box p { font-size: 14px; color: #333; margin-bottom: 12px; }
-  #modal-img { max-width: 100%; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 14px; display: none; }
+  #modal-box p { font-size: 13px; color: #444; margin-bottom: 10px; }
+  #modal-img {
+    max-width: 100%; border-radius: 6px;
+    border: 1px solid #ddd; margin-bottom: 14px; display: none;
+  }
   #modal-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   .modal-btn {
     padding: 10px 18px; border-radius: 8px; border: none;
@@ -110,9 +122,9 @@
 <div id="toolbar">
   <div class="tool-group">
     <span class="lbl">Color:</span>
-    <div class="color-swatch active" style="background:#1a1a1a" data-color="#1a1a1a" onclick="setColor(this)" title="Negro"></div>
-    <div class="color-swatch" style="background:#185FA5" data-color="#185FA5" onclick="setColor(this)" title="Azul"></div>
-    <div class="color-swatch" style="background:#A32D2D" data-color="#A32D2D" onclick="setColor(this)" title="Rojo"></div>
+    <div class="color-swatch active" style="background:#1a1a1a" data-color="#1a1a1a" onclick="setColor(this)"></div>
+    <div class="color-swatch" style="background:#185FA5" data-color="#185FA5" onclick="setColor(this)"></div>
+    <div class="color-swatch" style="background:#A32D2D" data-color="#A32D2D" onclick="setColor(this)"></div>
   </div>
   <div class="divider"></div>
   <div class="tool-group">
@@ -135,13 +147,12 @@
   </div>
 </div>
 
-<!-- Modal resultado (necesario para iOS que bloquea a.click()) -->
 <div id="modal-overlay">
   <div id="modal-box">
-    <p id="modal-msg">Mantén pulsada la imagen para guardarla en tu galería, o pulsa el botón de descarga.</p>
+    <p id="modal-msg">Mantén pulsada la imagen para guardarla, o pulsa Descargar.</p>
     <img id="modal-img" alt="Contrato firmado"/>
     <div id="modal-btns">
-      <button class="modal-btn dl" id="btn-dl" onclick="descargarDesdeModal()">⬇ Descargar</button>
+      <button class="modal-btn dl" onclick="descargarDesdeModal()">⬇ Descargar</button>
       <button class="modal-btn cls" onclick="cerrarModal()">✕ Cerrar</button>
     </div>
   </div>
@@ -155,62 +166,81 @@ const pageCtx    = pageCanvas.getContext('2d');
 const sigCanvas  = document.getElementById('sig-canvas');
 const sigCtx     = sigCanvas.getContext('2d');
 
-let drawing = false;
+let drawing     = false;
 let strokeColor = '#1a1a1a';
 let strokeWidth = 2;
 let finalDataURL = '';
 
-// ── Detectar iOS ──────────────────────────────────────────────
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-// ── Grosor ────────────────────────────────────────────────────
+// devicePixelRatio: 1 en desktop, 2 en Retina/iOS, 3 en Android flagship
+const DPR = window.devicePixelRatio || 1;
+
 document.getElementById('stroke-size').addEventListener('input', function() {
   strokeWidth = parseFloat(this.value);
   document.getElementById('stroke-val').textContent = this.value;
 });
 
-// ── Color ─────────────────────────────────────────────────────
 function setColor(el) {
   document.querySelectorAll('.color-swatch').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
   strokeColor = el.dataset.color;
 }
 
-// ── Limpiar ───────────────────────────────────────────────────
 function clearSig() {
   sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
 }
 
-// ── Cargar imagen ─────────────────────────────────────────────
+// ── Cargar imagen con calidad real ──────────────────────────────
 const img = new Image();
 img.onload = function() {
-  // Escalar al ancho de pantalla respetando resolución real
-  const screenW = window.innerWidth;
-  const scale   = Math.min(1, (screenW - 0) / img.naturalWidth); // sin padding lateral forzado
-  const w = Math.round(img.naturalWidth  * scale);
-  const h = Math.round(img.naturalHeight * scale);
+  const imgW = img.naturalWidth;   // 993
+  const imgH = img.naturalHeight;  // 1403
 
-  pageCanvas.width  = w;
-  pageCanvas.height = h;
-  sigCanvas.width   = w;
-  sigCanvas.height  = h;
-  pageCtx.drawImage(img, 0, 0, w, h);
+  // Ancho CSS disponible (pantalla sin scroll horizontal)
+  const availW = window.innerWidth;
+
+  // Ancho CSS al que se mostrará el canvas (puede ser menor que imgW en móvil)
+  const cssW = Math.min(imgW, availW);
+  const cssH = Math.round(imgH * (cssW / imgW));
+
+  // Tamaño INTERNO del canvas = CSS × DPR  →  nitidez total
+  const bufW = Math.round(cssW * DPR);
+  const bufH = Math.round(cssH * DPR);
+
+  // Aplicar tamaño interno
+  pageCanvas.width  = bufW;
+  pageCanvas.height = bufH;
+  sigCanvas.width   = bufW;
+  sigCanvas.height  = bufH;
+
+  // Aplicar tamaño CSS visual
+  pageCanvas.style.width  = cssW + 'px';
+  pageCanvas.style.height = cssH + 'px';
+  sigCanvas.style.width   = cssW + 'px';
+  sigCanvas.style.height  = cssH + 'px';
+
+  // Escalar el contexto para que 1 unidad CSS = DPR píxeles reales
+  pageCtx.scale(DPR, DPR);
+  sigCtx.scale(DPR, DPR);
+
+  // Dibujar la imagen a tamaño CSS (el scale hace el resto)
+  pageCtx.drawImage(img, 0, 0, cssW, cssH);
 };
 img.src = 'data:image/png;base64,' + IMG_BASE64;
 
-// ── Posición del toque ────────────────────────────────────────
+// ── Posición ────────────────────────────────────────────────────
 function getPos(e) {
   const rect = sigCanvas.getBoundingClientRect();
-  const sx   = sigCanvas.width  / rect.width;
-  const sy   = sigCanvas.height / rect.height;
+  // getBoundingClientRect da coordenadas CSS; el canvas internamente ya tiene scale
   const src  = e.touches ? e.touches[0] : e;
   return {
-    x: (src.clientX - rect.left) * sx,
-    y: (src.clientY - rect.top)  * sy
+    x: src.clientX - rect.left,
+    y: src.clientY - rect.top
   };
 }
 
-// ── Dibujo — Mouse ────────────────────────────────────────────
+// ── Mouse ───────────────────────────────────────────────────────
 sigCanvas.addEventListener('mousedown', e => {
   drawing = true;
   const p = getPos(e);
@@ -221,39 +251,36 @@ sigCanvas.addEventListener('mousemove', e => {
   const p = getPos(e);
   sigCtx.strokeStyle = strokeColor;
   sigCtx.lineWidth   = strokeWidth;
-  sigCtx.lineCap     = 'round';
-  sigCtx.lineJoin    = 'round';
+  sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round';
   sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
 });
 sigCanvas.addEventListener('mouseup',    () => drawing = false);
 sigCanvas.addEventListener('mouseleave', () => drawing = false);
 
-// ── Dibujo — Touch ────────────────────────────────────────────
+// ── Touch ───────────────────────────────────────────────────────
 sigCanvas.addEventListener('touchstart', e => {
-  e.preventDefault();
-  drawing = true;
+  e.preventDefault(); drawing = true;
   const p = getPos(e);
   sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y);
 }, { passive: false });
 
 sigCanvas.addEventListener('touchmove', e => {
-  e.preventDefault();
-  if (!drawing) return;
+  e.preventDefault(); if (!drawing) return;
   const p = getPos(e);
   sigCtx.strokeStyle = strokeColor;
   sigCtx.lineWidth   = strokeWidth;
-  sigCtx.lineCap     = 'round';
-  sigCtx.lineJoin    = 'round';
+  sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round';
   sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
 }, { passive: false });
 
-sigCanvas.addEventListener('touchend',   () => drawing = false);
-sigCanvas.addEventListener('touchcancel',() => drawing = false);
+sigCanvas.addEventListener('touchend',    () => drawing = false);
+sigCanvas.addEventListener('touchcancel', () => drawing = false);
 
-// ── Guardar ───────────────────────────────────────────────────
+// ── Guardar ─────────────────────────────────────────────────────
 function guardarFirmado() {
+  // Canvas final a resolución completa (DPR aplicado)
   const fc  = document.createElement('canvas');
-  fc.width  = pageCanvas.width;
+  fc.width  = pageCanvas.width;   // ya incluye DPR
   fc.height = pageCanvas.height;
   const ctx = fc.getContext('2d');
   ctx.drawImage(pageCanvas, 0, 0);
@@ -261,22 +288,18 @@ function guardarFirmado() {
   finalDataURL = fc.toDataURL('image/png');
 
   if (isIOS) {
-    // iOS Safari no permite a.click() con descarga → mostrar imagen en modal
-    const modalImg = document.getElementById('modal-img');
-    modalImg.src   = finalDataURL;
-    modalImg.style.display = 'block';
+    const mi = document.getElementById('modal-img');
+    mi.src = finalDataURL;
+    mi.style.display = 'block';
     document.getElementById('modal-msg').textContent =
-      'Mantén pulsada la imagen para guardarla, o pulsa Descargar.';
+      'Mantén pulsada la imagen para guardarla en tu galería, o pulsa Descargar.';
     document.getElementById('modal-overlay').classList.add('show');
   } else {
-    // Android / Desktop → descarga directa
     const rnd = Math.floor(10000 + Math.random() * 90000);
     const a   = document.createElement('a');
-    a.href     = finalDataURL;
+    a.href = finalDataURL;
     a.download = 'contrato_firmado_' + rnd + '.png';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 }
 
@@ -284,11 +307,9 @@ function descargarDesdeModal() {
   if (!finalDataURL) return;
   const rnd = Math.floor(10000 + Math.random() * 90000);
   const a   = document.createElement('a');
-  a.href     = finalDataURL;
+  a.href = finalDataURL;
   a.download = 'contrato_firmado_' + rnd + '.png';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
 function cerrarModal() {
